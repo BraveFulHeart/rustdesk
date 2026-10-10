@@ -51,29 +51,9 @@ jobs:
             ./flutter/lib/generated_bridge.dart
             ./flutter/lib/generated_bridge.freezed.dart
 
-  build-topmost-window:
-    name: Build TopMostWindow
-    runs-on: windows-2022
-    steps:
-      - name: Add MSBuild to PATH
-        uses: microsoft/setup-msbuild@v2
-
-      - name: Download and build RustDeskTempTopMostWindow
-        run: |
-          git clone https://github.com/rustdesk-org/RustDeskTempTopMostWindow RustDeskTempTopMostWindow
-          cd RustDeskTempTopMostWindow
-          git checkout ecd8d6a139eee76845ea66423fb739af450fda90
-          msbuild /p:Configuration=Release /p:Platform=x64 /p:TargetPlatformVersion=10.0 WindowInjection/WindowInjection.vcxproj
-
-      - name: Upload TopMostWindow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: topmostwindow-artifacts-x64
-          path: RustDeskTempTopMostWindow/WindowInjection/x64/Release/RustDeskTempTopMostWindow.exe
-
   build-windows-x64:
     name: Build RustDesk Windows x64
-    needs: [generate-bridge, build-topmost-window]
+    needs: [generate-bridge]
     runs-on: windows-2022
     steps:
       - name: Checkout source code
@@ -86,6 +66,28 @@ jobs:
         with:
           name: bridge-artifact
           path: ./
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build WindowInjection (TopMostWindow)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          try {
+            git clone https://github.com/rustdesk-org/RustDeskTempTopMostWindow RustDeskTempTopMostWindow
+            cd RustDeskTempTopMostWindow
+            git checkout ecd8d6a139eee76845ea66423fb739af450fda90
+            $sdk = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\include" | Where-Object { $_.Name -like "10.*" } | Sort-Object Name -Descending | Select-Object -First 1).Name
+            Write-Host "Detected Windows SDK: $sdk"
+            if ($sdk) {
+              msbuild WindowInjection/WindowInjection.vcxproj -p:Configuration=Release -p:Platform=x64 -p:WindowsTargetPlatformVersion=$sdk
+            } else {
+              msbuild WindowInjection/WindowInjection.vcxproj -p:Configuration=Release -p:Platform=x64
+            }
+          } catch {
+            Write-Host "TopMostWindow build skipped: $_"
+          }
 
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@v2.0.9
@@ -162,11 +164,13 @@ jobs:
           Remove-Item -Path "usbmmidd_v2\deviceinstaller64.exe", "usbmmidd_v2\deviceinstaller.exe", "usbmmidd_v2\usbmmidd.bat"
           mv -Force .\usbmmidd_v2 ./rustdesk
 
-      - name: Download RustDeskTempTopMostWindow
-        uses: actions/download-artifact@v4
-        with:
-          name: topmostwindow-artifacts-x64
-          path: "./rustdesk"
+      - name: Copy WindowInjection DLL if built
+        shell: pwsh
+        run: |
+          if (Test-Path "RustDeskTempTopMostWindow/WindowInjection/x64/Release/WindowInjection.dll") {
+            Copy-Item "RustDeskTempTopMostWindow/WindowInjection/x64/Release/WindowInjection.dll" -Destination "./rustdesk" -Force
+            Write-Host "WindowInjection.dll copied into ./rustdesk"
+          }
 
       - name: Upload RustDesk Windows Executable
         uses: actions/upload-artifact@v4
