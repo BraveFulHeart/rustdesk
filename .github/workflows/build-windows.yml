@@ -23,41 +23,81 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: "3.22.3"
-          cache: true
+      - name: Install prerequisites
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            clang \
+            cmake \
+            curl \
+            gcc \
+            git \
+            g++ \
+            libclang-dev \
+            libgtk-3-dev \
+            llvm-dev \
+            nasm \
+            ninja-build \
+            pkg-config \
+            wget
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: 1.75
+          targets: x86_64-unknown-linux-gnu
           components: "rustfmt"
 
-      - name: Install flutter_rust_bridge_codegen
-        run: |
-          cargo install flutter_rust_bridge_codegen --version 1.80.1 --locked
-          cargo install cargo-expand --version 1.0.95 --locked
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: bridge-ubuntu-22.04
 
-      - name: Generate bridge
+      - name: Install flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          flutter-version: "3.22.3"
+          cache: true
+
+      - name: Install flutter rust bridge deps and fetch packages
+        shell: bash
+        run: |
+          cargo install cargo-expand --version 1.0.95 --locked
+          cargo install flutter_rust_bridge_codegen --version 1.80.1 --features "uuid" --locked
+          sed -i -e 's/extended_text: 14.0.0/extended_text: 13.0.0/g' flutter/pubspec.yaml
+          pushd flutter && flutter pub get && popd
+
+      - name: Run flutter rust bridge
         run: |
           rustup component add rustfmt || true
-          flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs --dart-output ./flutter/lib/generated_bridge.dart
+          ~/.cargo/bin/flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs --dart-output ./flutter/lib/generated_bridge.dart --c-output ./flutter/macos/Runner/bridge_generated.h
+          mkdir -p ./flutter/ios/Runner ./flutter/macos/Runner
+          cp ./flutter/macos/Runner/bridge_generated.h ./flutter/ios/Runner/bridge_generated.h
 
       - name: Upload bridge artifact
         uses: actions/upload-artifact@v4
         with:
           name: bridge-artifact
           path: |
+            ./src/bridge_generated.rs
+            ./src/bridge_generated.io.rs
             ./flutter/lib/generated_bridge.dart
             ./flutter/lib/generated_bridge.freezed.dart
+            ./flutter/macos/Runner/bridge_generated.h
+            ./flutter/ios/Runner/bridge_generated.h
 
   build-windows-x64:
     name: Build RustDesk Windows x64
     needs: [generate-bridge]
     runs-on: windows-2022
     steps:
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
       - name: Checkout source code
         uses: actions/checkout@v4
         with:
@@ -68,6 +108,13 @@ jobs:
         with:
           name: bridge-artifact
           path: ./
+
+      - name: Verify restored bridge files
+        shell: pwsh
+        run: |
+          Write-Host "Verifying bridge files:"
+          Get-ChildItem -Path ./flutter/lib -Filter "*bridge*" | Select-Object Name, Length
+          Get-ChildItem -Path ./src -Filter "*bridge*" | Select-Object Name, Length
 
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
@@ -139,7 +186,19 @@ jobs:
         env:
           VCPKG_DEFAULT_HOST_TRIPLET: x64-windows-static
         run: |
-          $VCPKG_ROOT/vcpkg install --triplet x64-windows-static --x-install-root="$VCPKG_ROOT/installed"
+          if ! $VCPKG_ROOT/vcpkg \
+            install \
+            --triplet x64-windows-static \
+            --x-install-root="$VCPKG_ROOT/installed"; then
+            find "${VCPKG_ROOT}/" -name "*.log" | while read -r _1; do
+              echo "$_1:"
+              echo "======"
+              cat "$_1"
+              echo "======"
+            done
+            exit 1
+          fi
+          head -n 100 "${VCPKG_ROOT}/buildtrees/ffmpeg/build-x64-windows-static-rel-out.log" || true
         shell: bash
 
       - name: Inject Custom Server and Branding
@@ -174,6 +233,23 @@ jobs:
             Copy-Item "RustDeskTempTopMostWindow/WindowInjection/x64/Release/WindowInjection.dll" -Destination "./rustdesk" -Force
             Write-Host "WindowInjection.dll copied into ./rustdesk"
           }
+
+      - name: Build self-extracted portable executable
+        shell: bash
+        continue-on-error: true
+        run: |
+          runner_res=$(find . -name "Runner.res" | head -n 1);
+          if [ "$runner_res" != "" ]; then
+            cp "$runner_res" ./libs/portable/Runner.res;
+          fi
+          sed -i '/dpiAware/d' res/manifest.xml || true
+          pushd ./libs/portable
+          pip3 install -r requirements.txt
+          python3 ./generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/rustdesk.exe
+          popd
+          if [ -f "./target/release/rustdesk-portable-packer.exe" ]; then
+            cp ./target/release/rustdesk-portable-packer.exe ./rustdesk/rustdesk-portable.exe
+          fi
 
       - name: Upload RustDesk Windows Executable
         uses: actions/upload-artifact@v4
