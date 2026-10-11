@@ -13,7 +13,7 @@ def main():
     # App name
     text = re.sub(
         r'pub static ref APP_NAME: RwLock<String> = RwLock::new\(".*?"\.to_owned\(\)\);',
-        'pub static ref APP_NAME: RwLock<String> = RwLock::new("YuleLink".to_owned());',
+        'pub static ref APP_NAME: RwLock<String> = RwLock::new("yuleLink".to_owned());',
         text
     )
 
