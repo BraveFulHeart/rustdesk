@@ -1727,6 +1727,9 @@ copy /Y \"{tmp_path}\\{app_name} Tray.lnk\" \"%PROGRAMDATA%\\Microsoft\\Windows\
 chcp 65001
 md \"{path}\"
 {copy_exe}
+if exist \"{path}\\rustdesk.exe\" if not exist \"{path}\\{app_name}.exe\" copy /Y \"{path}\\rustdesk.exe\" \"{path}\\{app_name}.exe\"
+if exist \"{src_exe}\" if not exist \"{path}\\{app_name}.exe\" copy /Y \"{src_exe}\" \"{path}\\{app_name}.exe\"
+{rename_exe}
 reg add {subkey} /f
 reg add {subkey} /f /v DisplayIcon /t REG_SZ /d \"{display_icon}\"
 reg add {subkey} /f /v DisplayName /t REG_SZ /d \"{app_name}\"
@@ -1765,6 +1768,7 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
         sleep = if debug { "timeout 300" } else { "" },
         dels = if debug { "" } else { &dels },
         copy_exe = copy_exe_cmd(&src_exe, &exe, &path)?,
+        rename_exe = rename_exe_cmd(&src_exe, &path)?,
         import_config = get_import_config(&exe),
     );
     run_cmds(cmds, debug, "install")?;

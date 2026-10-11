@@ -350,6 +350,28 @@ pub fn get_options() -> String {
     for (k, v) in options.iter() {
         m.insert(k.into(), v.to_owned().into());
     }
+    if !m.contains_key("custom-rendezvous-server") || m["custom-rendezvous-server"].as_str().unwrap_or("").is_empty() {
+        if let Some(first) = hbb_common::config::RENDEZVOUS_SERVERS.first() {
+            if !first.is_empty() {
+                m.insert("custom-rendezvous-server".into(), (*first).into());
+            }
+        }
+    }
+    if !m.contains_key("key") || m["key"].as_str().unwrap_or("").is_empty() {
+        if !hbb_common::config::RS_PUB_KEY.is_empty() {
+            m.insert("key".into(), hbb_common::config::RS_PUB_KEY.into());
+        }
+    }
+    if !m.contains_key("relay-server") || m["relay-server"].as_str().unwrap_or("").is_empty() {
+        if !hbb_common::config::RELAY_SERVER.is_empty() {
+            m.insert("relay-server".into(), hbb_common::config::RELAY_SERVER.into());
+        }
+    }
+    if !m.contains_key("api-server") || m["api-server"].as_str().unwrap_or("").is_empty() {
+        if !hbb_common::config::API_SERVER.is_empty() {
+            m.insert("api-server".into(), hbb_common::config::API_SERVER.into());
+        }
+    }
     serde_json::to_string(&m).unwrap_or_default()
 }
 
