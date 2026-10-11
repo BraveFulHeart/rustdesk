@@ -144,25 +144,36 @@ jobs:
           version: ${{ env.LLVM_VERSION }}
 
       - name: Install flutter
+        id: flutter
         uses: subosito/flutter-action@v2
         with:
+          channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
       - name: Setup flutter engine
+        shell: pwsh
         run: |
           flutter doctor -v
           flutter precache --windows
+          $flutterRoot = "${{ steps.flutter.outputs['CACHE-PATH'] }}"
+          if (-not $flutterRoot) {
+            $flutterRoot = (Get-Command flutter).Source | Split-Path | Split-Path
+          }
+          Write-Host "Detected Flutter root: $flutterRoot"
           Invoke-WebRequest -Uri https://github.com/rustdesk/engine/releases/download/main/windows-x64-release.zip -OutFile windows-x64-release.zip
           Expand-Archive -Path windows-x64-release.zip -DestinationPath windows-x64-release
-          mv -Force windows-x64-release/* C:/hostedtoolcache/windows/flutter/stable-${{ env.FLUTTER_VERSION }}-x64/bin/cache/artifacts/engine/windows-x64-release/
+          $targetEngineDir = "$flutterRoot\bin\cache\artifacts\engine\windows-x64-release"
+          New-Item -ItemType Directory -Force -Path $targetEngineDir
+          Copy-Item -Path "windows-x64-release\*" -Destination $targetEngineDir -Recurse -Force
+          Write-Host "Custom flutter engine installed successfully to $targetEngineDir"
 
       - name: Patch flutter
         shell: bash
         run: |
           cp .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff $(dirname $(dirname $(which flutter)))
           cd $(dirname $(dirname $(which flutter)))
-          git apply flutter_3.24.4_dropdown_menu_enableFilter.diff
+          git apply flutter_3.24.4_dropdown_menu_enableFilter.diff || true
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
@@ -217,14 +228,15 @@ jobs:
           # =========================================
 
       - name: Build RustDesk
+        shell: pwsh
         run: |
           python3 .\build.py --portable --flutter --skip-portable-pack --hwcodec --vram
-          mv ./flutter/build/windows/x64/runner/Release ./rustdesk
+          Move-Item -Path ./flutter/build/windows/x64/runner/Release -Destination ./rustdesk -Force
           Invoke-WebRequest -Uri https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip -OutFile usbmmidd_v2.zip
           Expand-Archive usbmmidd_v2.zip -DestinationPath .
-          Remove-Item -Path usbmmidd_v2\Win32 -Recurse
-          Remove-Item -Path "usbmmidd_v2\deviceinstaller64.exe", "usbmmidd_v2\deviceinstaller.exe", "usbmmidd_v2\usbmmidd.bat"
-          mv -Force .\usbmmidd_v2 ./rustdesk
+          Remove-Item -Path usbmmidd_v2\Win32 -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "usbmmidd_v2\deviceinstaller64.exe", "usbmmidd_v2\deviceinstaller.exe", "usbmmidd_v2\usbmmidd.bat" -Force -ErrorAction SilentlyContinue
+          Move-Item -Path .\usbmmidd_v2 -Destination ./rustdesk -Force
 
       - name: Copy WindowInjection DLL if built
         shell: pwsh
