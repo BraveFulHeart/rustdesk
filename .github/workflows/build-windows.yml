@@ -222,7 +222,7 @@ jobs:
         run: |
           python3 .\build.py --portable --flutter --skip-portable-pack --hwcodec --vram
           Move-Item -Path ./flutter/build/windows/x64/runner/Release -Destination ./rustdesk -Force
-          Copy-Item -Path "./rustdesk/rustdesk.exe" -Destination "./rustdesk/YuleLink.exe" -Force
+          Move-Item -Path "./rustdesk/rustdesk.exe" -Destination "./rustdesk/YuleLink.exe" -Force
           Invoke-WebRequest -Uri https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip -OutFile usbmmidd_v2.zip
           Expand-Archive usbmmidd_v2.zip -DestinationPath .
           Remove-Item -Path usbmmidd_v2\Win32 -Recurse -Force -ErrorAction SilentlyContinue
@@ -239,7 +239,6 @@ jobs:
 
       - name: Build self-extracted portable executable
         shell: bash
-        continue-on-error: true
         run: |
           runner_res=$(find . -name "Runner.res" | head -n 1);
           if [ "$runner_res" != "" ]; then
@@ -250,13 +249,12 @@ jobs:
           pip3 install -r requirements.txt
           python3 ./generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/YuleLink.exe
           popd
-          if [ -f "./target/release/rustdesk-portable-packer.exe" ]; then
-            cp ./target/release/rustdesk-portable-packer.exe ./rustdesk/rustdesk-portable.exe
-            cp ./target/release/rustdesk-portable-packer.exe ./rustdesk/YuleLink-portable.exe
-          fi
+          mkdir -p ./dist
+          cp ./target/release/rustdesk-portable-packer.exe "./dist/YuleLink-${{ env.VERSION }}-x86_64.exe"
 
-      - name: Upload RustDesk Windows Executable
+      - name: Upload YuleLink Windows Executable
         uses: actions/upload-artifact@v4
         with:
-          name: RustDesk-Windows-x64
-          path: rustdesk
+          name: YuleLink-Windows-x64
+          path: dist/*.exe
+          if-no-files-found: error
