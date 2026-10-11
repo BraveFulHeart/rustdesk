@@ -215,23 +215,7 @@ jobs:
       - name: Inject Custom Server and Branding
         shell: pwsh
         run: |
-          # === [INJECTED BY RUSTDESK CUSTOMIZER] ===
-          $cfg = "./libs/hbb_common/src/config.rs"
-          if (Test-Path $cfg) {
-              $raw = Get-Content $cfg -Raw
-              $raw = $raw -replace 'pub const RENDEZVOUS_SERVERS: &\[&str\] = &\[".*?"\];', 'pub const RENDEZVOUS_SERVERS: &[&str] = &["x9ragj8s4ydxv89f7m-rustdesk.yulelink.com"];'
-              if ($raw -notmatch 'pub const RELAY_SERVER:') {
-                  $raw = $raw -replace 'pub const RS_PUB_KEY: &str = ".*?";', 'pub const RS_PUB_KEY: &str = "s2J6JDCuo1yTevpB2unpJwYdhIYnd9Qq79dEogH7cGQ=";`r`npub const RELAY_SERVER: &str = "x9ragj8s4ydxv89f7m-rustdesk.yulelink.com";`r`npub const API_SERVER: &str = "";'
-              } else {
-                  $raw = $raw -replace 'pub const RS_PUB_KEY: &str = ".*?";', 'pub const RS_PUB_KEY: &str = "s2J6JDCuo1yTevpB2unpJwYdhIYnd9Qq79dEogH7cGQ=";'
-                  $raw = $raw -replace 'pub const RELAY_SERVER: &str = ".*?";', 'pub const RELAY_SERVER: &str = "x9ragj8s4ydxv89f7m-rustdesk.yulelink.com";'
-                  $raw = $raw -replace 'pub const API_SERVER: &str = ".*?";', 'pub const API_SERVER: &str = "";'
-              }
-              $raw = $raw -replace 'pub static ref APP_NAME: RwLock<String> = RwLock::new\(".*?"\.to_owned\(\)\);', 'pub static ref APP_NAME: RwLock<String> = RwLock::new("YuleLink".to_owned());'
-              Set-Content -Path $cfg -Value $raw -NoNewline
-              Write-Host "[CI] Custom server and branding successfully injected!"
-          }
-          # =========================================
+          python3 ./.github/scripts/inject_config.py
 
       - name: Build RustDesk
         shell: pwsh
