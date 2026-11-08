@@ -139,9 +139,21 @@ jobs:
           }
 
       - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@v2.0.9
-        with:
-          version: ${{ env.LLVM_VERSION }}
+        shell: pwsh
+        run: |
+          if (Get-Command clang.exe -ErrorAction SilentlyContinue) {
+            Write-Host "clang.exe already available in PATH"
+          } elseif (Test-Path "C:\Program Files\LLVM\bin\clang.exe") {
+            Write-Host "Found pre-installed LLVM at C:\Program Files\LLVM"
+            "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+            "LLVM_PATH=C:\Program Files\LLVM" | Out-File -FilePath $env:GITHUB_ENV -Append
+          } else {
+            Write-Host "Installing LLVM via Chocolatey..."
+            choco install llvm -y --no-progress
+            "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+            "LLVM_PATH=C:\Program Files\LLVM" | Out-File -FilePath $env:GITHUB_ENV -Append
+          }
+          clang --version
 
       - name: Install flutter
         id: flutter
