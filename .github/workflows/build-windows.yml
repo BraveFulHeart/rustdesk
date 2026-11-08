@@ -272,7 +272,7 @@ jobs:
             if (-not $downloaded) {
               for ($i = 1; $i -le 3; $i++) {
                 try {
-                  Write-Host "Attempt $i: Downloading directly from release URL..."
+                  Write-Host "Attempt $i - Downloading directly from release URL..."
                   Invoke-WebRequest -Uri "https://github.com/microsoft/vcpkg-tool/releases/download/$versionTag/vcpkg.exe" -OutFile "$vcpkgDir\vcpkg.exe" -TimeoutSec 120
                   if ((Test-Path "$vcpkgDir\vcpkg.exe") -and ((Get-Item "$vcpkgDir\vcpkg.exe").Length -gt 1000000)) {
                     $downloaded = $true
