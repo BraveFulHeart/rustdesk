@@ -173,7 +173,37 @@ jobs:
             $flutterRoot = (Get-Command flutter).Source | Split-Path | Split-Path
           }
           Write-Host "Detected Flutter root: $flutterRoot"
-          Invoke-WebRequest -Uri https://github.com/rustdesk/engine/releases/download/main/windows-x64-release.zip -OutFile windows-x64-release.zip
+          # Download custom flutter engine (API direct download with fallback)
+          $engineDownloaded = $false
+          try {
+            Write-Host "Downloading flutter engine via GitHub API..."
+            $h = @{ "Accept" = "application/octet-stream"; "User-Agent" = "CI" }
+            Invoke-WebRequest -Uri "https://api.github.com/repos/rustdesk/engine/releases/assets/210168939" -Headers $h -OutFile "windows-x64-release.zip" -MaximumRedirection 5 -TimeoutSec 180
+            if ((Test-Path "windows-x64-release.zip") -and ((Get-Item "windows-x64-release.zip").Length -gt 1000000)) {
+              $engineDownloaded = $true
+              Write-Host "Successfully downloaded flutter engine via API"
+            }
+          } catch {
+            Write-Host "API download notice: $_"
+          }
+          if (-not $engineDownloaded) {
+            Write-Host "Fallback: Downloading from release URL..."
+            for ($i = 1; $i -le 3; $i++) {
+              try {
+                Invoke-WebRequest -Uri "https://github.com/rustdesk/engine/releases/download/main/windows-x64-release.zip" -OutFile "windows-x64-release.zip" -TimeoutSec 180
+                if ((Test-Path "windows-x64-release.zip") -and ((Get-Item "windows-x64-release.zip").Length -gt 1000000)) {
+                  $engineDownloaded = $true
+                  break
+                }
+              } catch {
+                Write-Host "Attempt $i failed: $_"
+                Start-Sleep -Seconds 5
+              }
+            }
+          }
+          if (-not $engineDownloaded) {
+            throw "Failed to download custom flutter engine"
+          }
           Expand-Archive -Path windows-x64-release.zip -DestinationPath windows-x64-release
           $targetEngineDir = "$flutterRoot\bin\cache\artifacts\engine\windows-x64-release"
           New-Item -ItemType Directory -Force -Path $targetEngineDir
@@ -235,7 +265,33 @@ jobs:
           python3 .\build.py --portable --flutter --skip-portable-pack --hwcodec --vram
           Move-Item -Path ./flutter/build/windows/x64/runner/Release -Destination ./rustdesk -Force
           Move-Item -Path "./rustdesk/rustdesk.exe" -Destination "./rustdesk/YuleLink.exe" -Force
-          Invoke-WebRequest -Uri https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip -OutFile usbmmidd_v2.zip
+          # Download usbmmidd_v2 (API direct download with fallback)
+          $usbDownloaded = $false
+          try {
+            Write-Host "Downloading usbmmidd_v2 via GitHub API..."
+            $h = @{ "Accept" = "application/octet-stream"; "User-Agent" = "CI" }
+            Invoke-WebRequest -Uri "https://api.github.com/repos/rustdesk-org/rdev/releases/assets/180784412" -Headers $h -OutFile "usbmmidd_v2.zip" -MaximumRedirection 5 -TimeoutSec 60
+            if ((Test-Path "usbmmidd_v2.zip") -and ((Get-Item "usbmmidd_v2.zip").Length -gt 10000)) {
+              $usbDownloaded = $true
+              Write-Host "Successfully downloaded usbmmidd_v2 via API"
+            }
+          } catch {
+            Write-Host "API download notice: $_"
+          }
+          if (-not $usbDownloaded) {
+            for ($i = 1; $i -le 3; $i++) {
+              try {
+                Invoke-WebRequest -Uri "https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip" -OutFile "usbmmidd_v2.zip" -TimeoutSec 60
+                if ((Test-Path "usbmmidd_v2.zip") -and ((Get-Item "usbmmidd_v2.zip").Length -gt 10000)) {
+                  $usbDownloaded = $true
+                  break
+                }
+              } catch {
+                Write-Host "Attempt $i failed: $_"
+                Start-Sleep -Seconds 3
+              }
+            }
+          }
           Expand-Archive usbmmidd_v2.zip -DestinationPath .
           Remove-Item -Path usbmmidd_v2\Win32 -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item -Path "usbmmidd_v2\deviceinstaller64.exe", "usbmmidd_v2\deviceinstaller.exe", "usbmmidd_v2\usbmmidd.bat" -Force -ErrorAction SilentlyContinue
