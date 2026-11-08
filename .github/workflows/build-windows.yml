@@ -90,6 +90,8 @@ jobs:
     name: Build RustDesk Windows x64
     needs: [generate-bridge]
     runs-on: windows-2022
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v7
@@ -178,6 +180,7 @@ jobs:
           try {
             Write-Host "Downloading flutter engine via GitHub API..."
             $h = @{ "Accept" = "application/octet-stream"; "User-Agent" = "CI" }
+            if ($env:GH_TOKEN) { $h["Authorization"] = "Bearer $env:GH_TOKEN" }
             Invoke-WebRequest -Uri "https://api.github.com/repos/rustdesk/engine/releases/assets/210168939" -Headers $h -OutFile "windows-x64-release.zip" -MaximumRedirection 5 -TimeoutSec 180
             if ((Test-Path "windows-x64-release.zip") -and ((Get-Item "windows-x64-release.zip").Length -gt 1000000)) {
               $engineDownloaded = $true
@@ -240,7 +243,12 @@ jobs:
           git fetch origin
           git checkout ${{ env.VCPKG_COMMIT_ID }}
 
-          # Download vcpkg.exe directly via GitHub API (with fallback) to bypass CDN 504
+          $authHeader = @{ "Accept" = "application/octet-stream"; "User-Agent" = "CI" }
+          if ($env:GH_TOKEN) {
+            $authHeader["Authorization"] = "Bearer $env:GH_TOKEN"
+          }
+
+          # 1. Download vcpkg.exe directly via GitHub API
           if (-not (Test-Path "$vcpkgDir\vcpkg.exe")) {
             $downloaded = $false
             $versionTag = "2026-07-27"
@@ -254,12 +262,11 @@ jobs:
 
             try {
               Write-Host "Fetching vcpkg asset ID via GitHub API..."
-              $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/microsoft/vcpkg-tool/releases/tags/$versionTag"
+              $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/microsoft/vcpkg-tool/releases/tags/$versionTag" -Headers $authHeader
               $asset = $rel.assets | Where-Object { $_.name -eq "vcpkg.exe" } | Select-Object -First 1
               if ($asset) {
                 Write-Host "Downloading vcpkg.exe (Asset ID: $($asset.id))..."
-                $h = @{ "Accept" = "application/octet-stream"; "User-Agent" = "CI" }
-                Invoke-WebRequest -Uri "https://api.github.com/repos/microsoft/vcpkg-tool/releases/assets/$($asset.id)" -Headers $h -OutFile "$vcpkgDir\vcpkg.exe" -MaximumRedirection 5 -TimeoutSec 120
+                Invoke-WebRequest -Uri "https://api.github.com/repos/microsoft/vcpkg-tool/releases/assets/$($asset.id)" -Headers $authHeader -OutFile "$vcpkgDir\vcpkg.exe" -MaximumRedirection 5 -TimeoutSec 120
                 if ((Test-Path "$vcpkgDir\vcpkg.exe") -and ((Get-Item "$vcpkgDir\vcpkg.exe").Length -gt 1000000)) {
                   $downloaded = $true
                   Write-Host "Successfully downloaded vcpkg.exe via API"
@@ -294,10 +301,43 @@ jobs:
           Set-Content -Value "" -Path "$vcpkgDir\vcpkg.disable-metrics" -Force -ErrorAction SilentlyContinue
           .\vcpkg.exe version
 
+          # 2. Pre-cache vcpkg build tools (Ninja, CMake) into downloads/ to prevent CDN 502/504 errors
+          New-Item -ItemType Directory -Force -Path "$vcpkgDir\downloads" | Out-Null
+
+          # Pre-cache Ninja 1.13.2
+          $ninjaFile = "$vcpkgDir\downloads\ninja-win-1.13.2.zip"
+          if (-not (Test-Path $ninjaFile)) {
+            Write-Host "Pre-downloading Ninja 1.13.2 via API..."
+            try {
+              Invoke-WebRequest -Uri "https://api.github.com/repos/ninja-build/ninja/releases/assets/318863577" -Headers $authHeader -OutFile $ninjaFile -MaximumRedirection 5 -TimeoutSec 60
+              Write-Host "Successfully pre-downloaded Ninja 1.13.2"
+            } catch {
+              Write-Host "Ninja API download fallback: $_"
+              Invoke-WebRequest -Uri "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-win.zip" -OutFile $ninjaFile -TimeoutSec 60 -ErrorAction SilentlyContinue
+            }
+          }
+
+          # Pre-cache CMake 4.4.0
+          $cmakeFile = "$vcpkgDir\downloads\cmake-4.4.0-windows-x86_64.zip"
+          if (-not (Test-Path $cmakeFile)) {
+            Write-Host "Pre-downloading CMake 4.4.0 via API..."
+            try {
+              Invoke-WebRequest -Uri "https://api.github.com/repos/Kitware/CMake/releases/assets/471629612" -Headers $authHeader -OutFile $cmakeFile -MaximumRedirection 5 -TimeoutSec 120
+              Write-Host "Successfully pre-downloaded CMake 4.4.0"
+            } catch {
+              Write-Host "CMake API download fallback: $_"
+              Invoke-WebRequest -Uri "https://github.com/Kitware/CMake/releases/download/v4.4.0/cmake-4.4.0-windows-x86_64.zip" -OutFile $cmakeFile -TimeoutSec 120 -ErrorAction SilentlyContinue
+            }
+          }
+
+          # Pre-fetch tools so vcpkg extracts and caches them immediately
+          Write-Host "Warming up vcpkg tools cache..."
+          .\vcpkg.exe fetch ninja
+          .\vcpkg.exe fetch cmake
+
           "VCPKG_ROOT=$vcpkgDir" | Out-File -FilePath $env:GITHUB_ENV -Append
           "RUNVCPKG_VCPKG_ROOT=$vcpkgDir" | Out-File -FilePath $env:GITHUB_ENV -Append
           "$vcpkgDir" | Out-File -FilePath $env:GITHUB_PATH -Append
-
       - name: Install vcpkg dependencies
         env:
           VCPKG_DEFAULT_HOST_TRIPLET: x64-windows-static
@@ -333,6 +373,7 @@ jobs:
           try {
             Write-Host "Downloading usbmmidd_v2 via GitHub API..."
             $h = @{ "Accept" = "application/octet-stream"; "User-Agent" = "CI" }
+            if ($env:GH_TOKEN) { $h["Authorization"] = "Bearer $env:GH_TOKEN" }
             Invoke-WebRequest -Uri "https://api.github.com/repos/rustdesk-org/rdev/releases/assets/180784412" -Headers $h -OutFile "usbmmidd_v2.zip" -MaximumRedirection 5 -TimeoutSec 60
             if ((Test-Path "usbmmidd_v2.zip") -and ((Get-Item "usbmmidd_v2.zip").Length -gt 10000)) {
               $usbDownloaded = $true
