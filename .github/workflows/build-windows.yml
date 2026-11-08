@@ -229,11 +229,74 @@ jobs:
           prefix-key: windows-2022
 
       - name: Setup vcpkg with binary cache
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgDirectory: C:\vcpkg
-          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
-          doNotCache: false
+        shell: pwsh
+        run: |
+          $vcpkgDir = "C:\vcpkg"
+          if (-not (Test-Path "$vcpkgDir\.git")) {
+            Write-Host "Cloning vcpkg..."
+            git clone https://github.com/microsoft/vcpkg.git $vcpkgDir
+          }
+          Set-Location $vcpkgDir
+          git fetch origin
+          git checkout ${{ env.VCPKG_COMMIT_ID }}
+
+          # Download vcpkg.exe directly via GitHub API (with fallback) to bypass CDN 504
+          if (-not (Test-Path "$vcpkgDir\vcpkg.exe")) {
+            $downloaded = $false
+            $versionTag = "2026-07-27"
+            if (Test-Path "$vcpkgDir\scripts\vcpkg-tool-metadata.txt") {
+              $meta = ConvertFrom-StringData (Get-Content "$vcpkgDir\scripts\vcpkg-tool-metadata.txt" -Raw)
+              if ($meta.VCPKG_TOOL_RELEASE_TAG) {
+                $versionTag = $meta.VCPKG_TOOL_RELEASE_TAG
+              }
+            }
+            Write-Host "Required vcpkg-tool release tag: $versionTag"
+
+            try {
+              Write-Host "Fetching vcpkg asset ID via GitHub API..."
+              $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/microsoft/vcpkg-tool/releases/tags/$versionTag"
+              $asset = $rel.assets | Where-Object { $_.name -eq "vcpkg.exe" } | Select-Object -First 1
+              if ($asset) {
+                Write-Host "Downloading vcpkg.exe (Asset ID: $($asset.id))..."
+                $h = @{ "Accept" = "application/octet-stream"; "User-Agent" = "CI" }
+                Invoke-WebRequest -Uri "https://api.github.com/repos/microsoft/vcpkg-tool/releases/assets/$($asset.id)" -Headers $h -OutFile "$vcpkgDir\vcpkg.exe" -MaximumRedirection 5 -TimeoutSec 120
+                if ((Test-Path "$vcpkgDir\vcpkg.exe") -and ((Get-Item "$vcpkgDir\vcpkg.exe").Length -gt 1000000)) {
+                  $downloaded = $true
+                  Write-Host "Successfully downloaded vcpkg.exe via API"
+                }
+              }
+            } catch {
+              Write-Host "API asset lookup/download failed: $_"
+            }
+
+            if (-not $downloaded) {
+              for ($i = 1; $i -le 3; $i++) {
+                try {
+                  Write-Host "Attempt $i: Downloading directly from release URL..."
+                  Invoke-WebRequest -Uri "https://github.com/microsoft/vcpkg-tool/releases/download/$versionTag/vcpkg.exe" -OutFile "$vcpkgDir\vcpkg.exe" -TimeoutSec 120
+                  if ((Test-Path "$vcpkgDir\vcpkg.exe") -and ((Get-Item "$vcpkgDir\vcpkg.exe").Length -gt 1000000)) {
+                    $downloaded = $true
+                    break
+                  }
+                } catch {
+                  Write-Host "Attempt $i failed: $_"
+                  Start-Sleep -Seconds 3
+                }
+              }
+            }
+
+            if (-not $downloaded) {
+              Write-Host "Running bootstrap-vcpkg.bat as last resort..."
+              .\bootstrap-vcpkg.bat -disableMetrics
+            }
+          }
+
+          Set-Content -Value "" -Path "$vcpkgDir\vcpkg.disable-metrics" -Force -ErrorAction SilentlyContinue
+          .\vcpkg.exe version
+
+          "VCPKG_ROOT=$vcpkgDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "RUNVCPKG_VCPKG_ROOT=$vcpkgDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "$vcpkgDir" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Install vcpkg dependencies
         env:
