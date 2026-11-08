@@ -231,6 +231,16 @@ jobs:
         with:
           prefix-key: windows-2022
 
+      - name: Cache vcpkg installed packages and downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:\vcpkg\installed
+            C:\vcpkg\downloads
+          key: windows-2022-vcpkg-deps-${{ env.VCPKG_COMMIT_ID }}
+          restore-keys: |
+            windows-2022-vcpkg-deps-
+
       - name: Setup vcpkg with binary cache
         shell: pwsh
         run: |
@@ -327,6 +337,32 @@ jobs:
             } catch {
               Write-Host "CMake API download fallback: $_"
               Invoke-WebRequest -Uri "https://github.com/Kitware/CMake/releases/download/v4.4.0/cmake-4.4.0-windows-x86_64.zip" -OutFile $cmakeFile -TimeoutSec 120 -ErrorAction SilentlyContinue
+            }
+          }
+
+          # 3. Pre-cache GitHub source tarballs to prevent 504 Gateway Timeouts during compilation
+          $archives = @(
+            @{ name = "pkgconf-pkgconf-pkgconf-3.0.3.tar.gz"; url = "https://github.com/pkgconf/pkgconf/archive/pkgconf-3.0.3.tar.gz" },
+            @{ name = "webmproject-libvpx-v1.16.0.tar.gz"; url = "https://github.com/webmproject/libvpx/archive/v1.16.0.tar.gz" },
+            @{ name = "xiph-opus-v1.5.2.tar.gz"; url = "https://github.com/xiph/opus/archive/v1.5.2.tar.gz" }
+          )
+
+          foreach ($a in $archives) {
+            $targetPath = "$vcpkgDir\downloads\$($a.name)"
+            if (-not (Test-Path $targetPath)) {
+              Write-Host "Pre-downloading source archive $($a.name)..."
+              for ($i = 1; $i -le 3; $i++) {
+                try {
+                  Invoke-WebRequest -Uri $a.url -Headers $authHeader -OutFile $targetPath -MaximumRedirection 5 -TimeoutSec 180
+                  if ((Test-Path $targetPath) -and ((Get-Item $targetPath).Length -gt 10000)) {
+                    Write-Host "Successfully pre-downloaded $($a.name)"
+                    break
+                  }
+                } catch {
+                  Write-Host "Attempt $i failed for $($a.name) - $_"
+                  Start-Sleep -Seconds 3
+                }
+              }
             }
           }
 
