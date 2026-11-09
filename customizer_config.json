@@ -5,7 +5,7 @@
   "app_name": "YuleLink",
   "server_ip": "x9ragj8s4ydxv89f7m-rustdesk.yulelink.com",
   "relay_server": "",
-  "api_server": "",
+  "api_server": "https://rustdesk-api.yulelink.com",
   "server_key": "s2J6JDCuo1yTevpB2unpJwYdhIYnd9Qq79dEogH7cGQ=",
   "commit_msg": "branding: customize app name, icons, and lock server",
   "branch_name": "master"

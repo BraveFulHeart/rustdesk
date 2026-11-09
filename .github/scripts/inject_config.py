@@ -48,13 +48,13 @@ def main():
     if 'pub const API_SERVER:' in text:
         text = re.sub(
             r'pub const API_SERVER: &str = ".*?";',
-            'pub const API_SERVER: &str = "";',
+            'pub const API_SERVER: &str = "https://rustdesk-api.yulelink.com";',
             text
         )
     else:
         text = text.replace(
             'pub const RS_PUB_KEY:',
-            'pub const API_SERVER: &str = "";\npub const RS_PUB_KEY:'
+            'pub const API_SERVER: &str = "https://rustdesk-api.yulelink.com";\npub const RS_PUB_KEY:'
         )
 
     # Ensure get_options and get_option have fallback logic
