@@ -1,6 +1,19 @@
 import os
 import re
 
+def patch_about_page(sp_path):
+    if not os.path.exists(sp_path):
+        return
+    with open(sp_path, "r", encoding="utf-8") as f:
+        t = f.read()
+    if "launchUrlString('https://rustdesk.com');" in t:
+        t = t.replace("launchUrlString('https://rustdesk.com');", "launchUrlString('https://yulelink.com');")
+    if "child: Text(\n                    translate('Website')," in t:
+        t = t.replace("child: Text(\n                    translate('Website'),", "child: Text(\n                    '${translate('Website')}: yulelink.com',")
+    with open(sp_path, "w", encoding="utf-8") as f:
+        f.write(t)
+    print("[CI] desktop_setting_page.dart: Patched About website to yulelink.com")
+
 def patch_dialog_file(dialog_path):
     if not os.path.exists(dialog_path):
         return
@@ -271,6 +284,10 @@ def main():
     # 2. Patch Flutter server settings dialog
     dialog_path = os.path.join("flutter", "lib", "mobile", "widgets", "dialog.dart")
     patch_dialog_file(dialog_path)
+
+    # 3. Patch About page website link to yulelink.com
+    sp_path = os.path.join("flutter", "lib", "desktop", "pages", "desktop_setting_page.dart")
+    patch_about_page(sp_path)
 
 if __name__ == "__main__":
     main()
