@@ -90,7 +90,11 @@ void showServerSettingsWithValue(
   ];
 
   dialogManager.show((setState, close, context) {
+    final isLocked = bind.mainGetBuildinOption(key: 'lock-server-settings') == 'Y' ||
+        bind.mainGetBuildinOption(key: 'hide-server-settings') == 'Y' ||
+        isOptionFixed('custom-rendezvous-server');
     Future<bool> submit() async {
+      if (isLocked) return false;
       setState(() {
         isInProgress = true;
       });
@@ -128,7 +132,8 @@ void showServerSettingsWithValue(
                     EdgeInsets.symmetric(horizontal: 8, vertical: 12),
                 showLabelText: false,
                 validator: validator,
-                autofocus: autofocus,
+                autofocus: autofocus && !isLocked,
+                readOnly: isLocked,
               ).workaroundFreezeLinuxMint(),
             ),
           ],
@@ -140,6 +145,7 @@ void showServerSettingsWithValue(
         controller: controller,
         errorMsg: errorMsg,
         validator: validator,
+        readOnly: isLocked,
       ).workaroundFreezeLinuxMint();
     }
 
@@ -147,7 +153,7 @@ void showServerSettingsWithValue(
       title: Row(
         children: [
           Expanded(child: Text(translate('ID/Relay Server'))),
-          ...ServerConfigImportExportWidgets(controllers, errMsgs),
+          if (!isLocked) ...ServerConfigImportExportWidgets(controllers, errMsgs),
         ],
       ),
       content: ConstrainedBox(
@@ -178,8 +184,9 @@ void showServerSettingsWithValue(
                       return null;
                     },
                   ),
-                  Padding(
-                    padding: EdgeInsetsDirectional.only(
+                  if (!isLocked)
+                    Padding(
+                      padding: EdgeInsetsDirectional.only(
                       start: isDesktop || isWeb ? labelWidth + labelSpacing : 0,
                     ),
                     child: ApiServerWarning(
@@ -201,11 +208,16 @@ void showServerSettingsWithValue(
         ),
       ),
       actions: [
-        dialogButton('Cancel', onPressed: () {
-          close();
-        }, isOutline: true),
-        dialogButton(
-          'OK',
+        if (isLocked)
+          dialogButton('Close', onPressed: () {
+            close();
+          }, isOutline: false)
+        else ...[
+          dialogButton('Cancel', onPressed: () {
+            close();
+          }, isOutline: true),
+          dialogButton(
+            'OK',
           onPressed: () async {
             if (await submit()) {
               close();
@@ -216,6 +228,7 @@ void showServerSettingsWithValue(
             }
           },
         ),
+        ],
       ],
     );
   });
@@ -229,13 +242,16 @@ TextFormField serverSettingsTextFormField({
   bool autofocus = false,
   bool showLabelText = true,
   EdgeInsetsGeometry? contentPadding,
+  bool readOnly = false,
 }) {
   return TextFormField(
     controller: controller,
+    readOnly: readOnly,
     decoration: InputDecoration(
       labelText: showLabelText ? label : null,
       errorText: errorMsg.isEmpty ? null : errorMsg,
       contentPadding: contentPadding,
+      suffixIcon: readOnly ? const Icon(Icons.lock_outline, size: 16) : null,
     ),
     validator: validator,
     autofocus: autofocus,

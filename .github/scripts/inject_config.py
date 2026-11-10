@@ -1,6 +1,116 @@
 import os
 import re
 
+def patch_dialog_file(dialog_path):
+    if not os.path.exists(dialog_path):
+        return
+    with open(dialog_path, "r", encoding="utf-8") as f:
+        t = f.read()
+
+    crlf = "\r\n" in t
+    nl = "\r\n" if crlf else "\n"
+
+    if "final isLocked = bind.mainGetBuildinOption(key: 'lock-server-settings') == 'Y'" in t:
+        return
+
+    old_dm = (
+        f"  final errMsgs = [{nl}"
+        f"    idServerMsg,{nl}"
+        f"    relayServerMsg,{nl}"
+        f"    apiServerMsg,{nl}"
+        f"  ];{nl}{nl}"
+        f"  dialogManager.show((setState, close, context) {{"
+    )
+    new_dm = (
+        f"  final errMsgs = [{nl}"
+        f"    idServerMsg,{nl}"
+        f"    relayServerMsg,{nl}"
+        f"    apiServerMsg,{nl}"
+        f"  ];{nl}{nl}"
+        f"  dialogManager.show((setState, close, context) {{{nl}"
+        f"    final isLocked = bind.mainGetBuildinOption(key: 'lock-server-settings') == 'Y' ||{nl}"
+        f"        bind.mainGetBuildinOption(key: 'hide-server-settings') == 'Y' ||{nl}"
+        f"        isOptionFixed('custom-rendezvous-server');"
+    )
+    if old_dm in t:
+        t = t.replace(old_dm, new_dm, 1)
+
+    old_sub = f"    Future<bool> submit() async {{{nl}"
+    new_sub = f"    Future<bool> submit() async {{{nl}      if (isLocked) return false;{nl}"
+    if old_sub in t:
+        t = t.replace(old_sub, new_sub, 1)
+
+    old_bf_desktop = f"                autofocus: autofocus,{nl}              ).workaroundFreezeLinuxMint(),"
+    new_bf_desktop = f"                autofocus: autofocus && !isLocked,{nl}                readOnly: isLocked,{nl}              ).workaroundFreezeLinuxMint(),"
+    if old_bf_desktop in t:
+        t = t.replace(old_bf_desktop, new_bf_desktop, 1)
+
+    old_bf_mob = f"        validator: validator,{nl}      ).workaroundFreezeLinuxMint();"
+    new_bf_mob = f"        validator: validator,{nl}        readOnly: isLocked,{nl}      ).workaroundFreezeLinuxMint();"
+    if old_bf_mob in t:
+        t = t.replace(old_bf_mob, new_bf_mob, 1)
+
+    old_title = f"          ...ServerConfigImportExportWidgets(controllers, errMsgs),{nl}"
+    new_title = f"          if (!isLocked) ...ServerConfigImportExportWidgets(controllers, errMsgs),{nl}"
+    if old_title in t:
+        t = t.replace(old_title, new_title, 1)
+
+    old_api_warn = f"                  Padding({nl}                    padding: EdgeInsetsDirectional.only("
+    new_api_warn = f"                  if (!isLocked){nl}                    Padding({nl}                      padding: EdgeInsetsDirectional.only("
+    if old_api_warn in t:
+        t = t.replace(old_api_warn, new_api_warn, 1)
+
+    old_actions = (
+        f"      actions: [{nl}"
+        f"        dialogButton('Cancel', onPressed: () {{{nl}"
+        f"          close();{nl}"
+        f"        }}, isOutline: true),{nl}"
+        f"        dialogButton({nl}"
+        f"          'OK',{nl}"
+    )
+    new_actions = (
+        f"      actions: [{nl}"
+        f"        if (isLocked){nl}"
+        f"          dialogButton('Close', onPressed: () {{{nl}"
+        f"            close();{nl}"
+        f"          }}, isOutline: false){nl}"
+        f"        else ...[{nl}"
+        f"          dialogButton('Cancel', onPressed: () {{{nl}"
+        f"            close();{nl}"
+        f"          }}, isOutline: true),{nl}"
+        f"          dialogButton({nl}"
+        f"            'OK',{nl}"
+    )
+    old_actions_end = f"          }},{nl}        ),{nl}      ],{nl}"
+    new_actions_end = f"          }},{nl}        ),{nl}        ],{nl}      ],{nl}"
+    if old_actions in t and old_actions_end in t:
+        t = t.replace(old_actions, new_actions, 1)
+        t = t.replace(old_actions_end, new_actions_end, 1)
+
+    old_tf_sig = f"  EdgeInsetsGeometry? contentPadding,{nl}}}) {{"
+    new_tf_sig = f"  EdgeInsetsGeometry? contentPadding,{nl}  bool readOnly = false,{nl}}}) {{"
+    if old_tf_sig in t:
+        t = t.replace(old_tf_sig, new_tf_sig, 1)
+
+    old_tf_body = f"  return TextFormField({nl}    controller: controller,{nl}    decoration: InputDecoration({nl}"
+    new_tf_body = (
+        f"  return TextFormField({nl}"
+        f"    controller: controller,{nl}"
+        f"    readOnly: readOnly,{nl}"
+        f"    decoration: InputDecoration({nl}"
+    )
+    if old_tf_body in t:
+        t = t.replace(old_tf_body, new_tf_body, 1)
+
+    old_tf_icon = f"      contentPadding: contentPadding,{nl}    ),"
+    new_tf_icon = f"      contentPadding: contentPadding,{nl}      suffixIcon: readOnly ? const Icon(Icons.lock_outline, size: 16) : null,{nl}    ),"
+    if old_tf_icon in t:
+        t = t.replace(old_tf_icon, new_tf_icon, 1)
+
+    with open(dialog_path, "w", encoding="utf-8") as f:
+        f.write(t)
+    print("[CI] dialog.dart: Patched server dialog with read-only & lock controls")
+
 def main():
     cfg_path = os.path.join("libs", "hbb_common", "src", "config.rs")
     if not os.path.exists(cfg_path):
@@ -56,6 +166,32 @@ def main():
             'pub const RS_PUB_KEY:',
             'pub const API_SERVER: &str = "https://rustdesk-api.yulelink.com";\npub const RS_PUB_KEY:'
         )
+
+    # OVERWRITE_SETTINGS
+    # Apply OVERWRITE_SETTINGS (Hard lock at Rust Core level)
+    code_ow = """pub static ref OVERWRITE_SETTINGS: RwLock<HashMap<String, String>> = RwLock::new({
+        let mut m = HashMap::new();
+        m.insert("custom-rendezvous-server".to_string(), "x9ragj8s4ydxv89f7m-rustdesk.yulelink.com".to_string());
+        m.insert("key".to_string(), "s2J6JDCuo1yTevpB2unpJwYdhIYnd9Qq79dEogH7cGQ=".to_string());
+        m.insert("relay-server".to_string(), "".to_string());
+        m.insert("api-server".to_string(), "https://rustdesk-api.yulelink.com".to_string());
+        m
+    });"""
+    pat_ow = r"pub static ref OVERWRITE_SETTINGS: RwLock<HashMap<String, String>> = (?:Default::default\(\)|RwLock::new\(\{.*?\}\));"
+    text = re.sub(pat_ow, lambda _: code_ow, text, count=1, flags=re.DOTALL)
+
+
+    # BUILTIN_SETTINGS
+    # Apply BUILTIN_SETTINGS (hide-server-settings & lock-server-settings)
+    bi_code = """pub static ref BUILTIN_SETTINGS: RwLock<HashMap<String, String>> = RwLock::new({
+        let mut m = HashMap::new();
+        m.insert("hide-server-settings".to_string(), "Y".to_string());
+        m.insert("lock-server-settings".to_string(), "Y".to_string());
+        m
+    });"""
+    pat_bi = r"pub static ref BUILTIN_SETTINGS: RwLock<HashMap<String, String>> = (?:Default::default\(\)|RwLock::new\(\{.*?\}\));"
+    text = re.sub(pat_bi, lambda _: bi_code, text, count=1, flags=re.DOTALL)
+
 
     # Ensure get_options and get_option have fallback logic
     if '!res.contains_key("custom-rendezvous-server")' not in text:
@@ -131,7 +267,11 @@ def main():
 
     with open(cfg_path, "w", encoding="utf-8") as f:
         f.write(text)
-    print("[CI] Custom server and branding successfully injected!")
+    print("[CI] Custom server and branding successfully injected into config.rs!")
+
+    # 2. Patch Flutter server settings dialog
+    dialog_path = os.path.join("flutter", "lib", "mobile", "widgets", "dialog.dart")
+    patch_dialog_file(dialog_path)
 
 if __name__ == "__main__":
     main()
