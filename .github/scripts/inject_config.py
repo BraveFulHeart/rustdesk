@@ -6,13 +6,15 @@ def patch_about_page(sp_path):
         return
     with open(sp_path, "r", encoding="utf-8") as f:
         t = f.read()
-    if "launchUrlString('https://rustdesk.com');" in t:
-        t = t.replace("launchUrlString('https://rustdesk.com');", "launchUrlString('https://yulelink.com');")
-    if "child: Text(\n                    translate('Website')," in t:
-        t = t.replace("child: Text(\n                    translate('Website'),", "child: Text(\n                    '${translate('Website')}: yulelink.com',")
+    t = re.sub(r"launchUrlString\([\'\"][^\'\"]*(?:privacy\.html|remote-support)[\'\"]\);", "launchUrlString(\'https://yulelink.com/service/remote-support\');", t)
+    t = re.sub(r"child:\s*Text\(\s*(?:translate\(\'Privacy Statement\'\)|'[^']*?นโยบาย[^']*?'),", "child: Text(\n                    \'นโยบายการให้บริการ\',", t)
+    t = re.sub(r"launchUrlString\([\'\"]https://(?:rustdesk\.com|yulelink\.com)[\'\"]\);", "launchUrlString(\'https://yulelink.com\');", t)
+    t = re.sub(r"child:\s*Text\(\s*(?:translate\(\'Website\'\)|'\${translate\(\'Website\'\)}:[^']*'|'[^']*?yulelink\.com[^']*?'),", "child: Text(\n                    \'ยูลลิงก์ ลิงก์ไปด้วยกัน : yulelink.com\',", t)
+    t = re.sub(r"(\'Copyright © \${DateTime\.now\(\)\.toString\(\)\.substring\(0, 4\)} Purslane Tech Pte\. Ltd\.)(?: \| Modified by [^\'\n]*)?(\\n\$license\')", r"\g<1> | Modified by Yulelink\g<2>", t)
+
     with open(sp_path, "w", encoding="utf-8") as f:
         f.write(t)
-    print("[CI] desktop_setting_page.dart: Patched About website to yulelink.com")
+    print("[CI] desktop_setting_page.dart: Patched About website & policy branding")
 
 def patch_dialog_file(dialog_path):
     if not os.path.exists(dialog_path):
@@ -135,7 +137,7 @@ def main():
 
     # App name
     text = re.sub(
-        r'pub static ref APP_NAME: RwLock<String> = RwLock::new\(".*?"\.to_owned\(\)\);',
+        r'pub static ref APP_NAME: RwLock<String> = RwLock::new\(.*?\.to_owned\(\)\);',
         'pub static ref APP_NAME: RwLock<String> = RwLock::new("YuleLink".to_owned());',
         text
     )
@@ -285,7 +287,7 @@ def main():
     dialog_path = os.path.join("flutter", "lib", "mobile", "widgets", "dialog.dart")
     patch_dialog_file(dialog_path)
 
-    # 3. Patch About page website link to yulelink.com
+    # 3. Patch About page website link and policy
     sp_path = os.path.join("flutter", "lib", "desktop", "pages", "desktop_setting_page.dart")
     patch_about_page(sp_path)
 

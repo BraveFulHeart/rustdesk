@@ -2617,10 +2617,10 @@ class _AboutState extends State<_About> {
                       .marginSymmetric(vertical: 4.0)),
               InkWell(
                   onTap: () {
-                    launchUrlString('https://rustdesk.com/privacy.html');
+                    launchUrlString('https://yulelink.com/service/remote-support');
                   },
                   child: Text(
-                    translate('Privacy Statement'),
+                    'นโยบายการให้บริการ',
                     style: linkStyle,
                   ).marginSymmetric(vertical: 4.0)),
               InkWell(
@@ -2628,7 +2628,7 @@ class _AboutState extends State<_About> {
                     launchUrlString('https://yulelink.com');
                   },
                   child: Text(
-                    '${translate('Website')}: yulelink.com',
+                    'ยูลลิงก์ ลิงก์ไปด้วยกัน : yulelink.com',
                     style: linkStyle,
                   ).marginSymmetric(vertical: 4.0)),
               Container(
@@ -2643,7 +2643,7 @@ class _AboutState extends State<_About> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Copyright © ${DateTime.now().toString().substring(0, 4)} Purslane Tech Pte. Ltd.\n$license',
+                            'Copyright © ${DateTime.now().toString().substring(0, 4)} Purslane Tech Pte. Ltd. | Modified by Yulelink\n$license',
                             style: const TextStyle(color: Colors.white),
                           ),
                           Text(
