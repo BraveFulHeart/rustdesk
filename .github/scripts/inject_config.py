@@ -10,7 +10,7 @@ def patch_about_page(sp_path):
     t = re.sub(r"child:\s*Text\(\s*(?:translate\(\'Privacy Statement\'\)|'[^']*?นโยบาย[^']*?'),", "child: Text(\n                    \'นโยบายการให้บริการ\',", t)
     t = re.sub(r"launchUrlString\([\'\"]https://(?:rustdesk\.com|yulelink\.com)[\'\"]\);", "launchUrlString(\'https://yulelink.com\');", t)
     t = re.sub(r"child:\s*Text\(\s*(?:translate\(\'Website\'\)|'\${translate\(\'Website\'\)}:[^']*'|'[^']*?yulelink\.com[^']*?'),", "child: Text(\n                    \'ยูลลิงก์ ลิงก์ไปด้วยกัน : yulelink.com\',", t)
-    t = re.sub(r"(\'Copyright © \${DateTime\.now\(\)\.toString\(\)\.substring\(0, 4\)} Purslane Tech Pte\. Ltd\.)(?: \| Modified by [^\'\n]*)?(\\n\$license\')", r"\g<1> | Modified by Yulelink\g<2>", t)
+    t = re.sub(r"(\'Copyright © \${DateTime\.now\(\)\.toString\(\)\.substring\(0, 4\)} Purslane Tech Pte\. Ltd\.)(?: \| Modified by [^\'\n]*)?(\\n\$license\')", r"\g<1>| Modified by Yulelink\g<2>", t)
 
     with open(sp_path, "w", encoding="utf-8") as f:
         f.write(t)
