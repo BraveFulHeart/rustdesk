@@ -200,6 +200,7 @@ def main():
     # Apply BUILTIN_SETTINGS (hide-server-settings & lock-server-settings)
     bi_code = """pub static ref BUILTIN_SETTINGS: RwLock<HashMap<String, String>> = RwLock::new({
         let mut m = HashMap::new();
+        m.insert("hide-server-settings".to_string(), "Y".to_string());
         m.insert("lock-server-settings".to_string(), "Y".to_string());
         m
     });"""
